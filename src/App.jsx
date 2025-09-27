@@ -1,15 +1,12 @@
 import './App.css';
-
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { useState, useEffect } from 'react';
 
-// Evalúa la fórmula lógica para cada combinación de sensores
 function evaluateFormula(p, q, r, s) {
-  // Fórmula: ¬((¬p ∧ q ∧ r) ∨ ¬s)
   return !((!p && q && r) || !s);
 }
 
-
-// Genera solo la fila actual según los sensores seleccionados
 function generateCurrentRow(sensors) {
   const { p, q, r, s } = sensors;
   const f = evaluateFormula(p, q, r, s);
@@ -26,32 +23,27 @@ function generateCurrentRow(sensors) {
 }
 
 function App() {
-  // Estado de los sensores
   const [sensors, setSensors] = useState({
     p: true,
     q: true,
     r: true,
     s: true,
   });
-  // Estado del sistema
   const [status, setStatus] = useState({
     label: 'VENTILACIÓN: ÓPTIMA',
     msg: 'Mensaje: El flujo de aire es adecuado.',
     color: 'green-glow',
   });
-  // Tabla de verdad: solo la fila actual
   const [truthTable, setTruthTable] = useState(generateCurrentRow({
     p: true, q: true, r: true, s: true,
   }));
 
-  // Enviar mensaje a WinForms (WebView2)
   const sendToHost = (data) => {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(data);
     }
   };
 
-  // Recibir mensajes de WinForms
   useEffect(() => {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.addEventListener('message', (event) => {
@@ -67,21 +59,43 @@ function App() {
     }
   }, []);
 
-  // Actualiza la fila automáticamente cuando cambian los sensores
   useEffect(() => {
-    setTruthTable(generateCurrentRow(sensors));
+    const currentRow = generateCurrentRow(sensors);
+    setTruthTable(currentRow);
+    const fValue = currentRow[1][4];
+    if (fValue === 'F') {
+      setStatus({
+        label: 'VENTILACIÓN: INADECUADA',
+        msg: 'Mensaje: El flujo de aire NO es adecuado.',
+        color: 'red-glow',
+      });
+    } else {
+      setStatus({
+        label: 'VENTILACIÓN: ÓPTIMA',
+        msg: 'Mensaje: El flujo de aire es adecuado.',
+        color: 'green-glow',
+      });
+    }
   }, [sensors]);
 
-  // Manejar cambio de sensores
+  const handleExportPDF = async () => {
+    const input = document.querySelector('.main-container');
+    if (!input) return;
+    const canvas = await html2canvas(input);
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'px',
+      format: [canvas.width, canvas.height],
+    });
+    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+    pdf.save('ventilacion_aula.pdf');
+  };
+
   const handleSensorChange = (varName, checked) => {
     const newSensors = { ...sensors, [varName]: checked };
     setSensors(newSensors);
     sendToHost({ type: 'sensorChange', sensors: newSensors });
-  };
-
-  // Manejar generación de tabla de verdad
-  const handleGenerateTable = () => {
-    sendToHost({ type: 'generateTruthTable', sensors });
   };
 
   return (
@@ -91,7 +105,6 @@ function App() {
         <span className="authors">- CRISTANCHO, LOZANO, MUNEVAR, GUEVARA</span>
       </header>
       <div className="content">
-        {/* Panel izquierdo: Sensores */}
         <section className="panel panel-sensors">
           <h3>Sensores de Entrada</h3>
           <div className="sensor-list">
@@ -101,7 +114,6 @@ function App() {
             <SensorSwitch label="Ventanas Abiertas" varName="s" checked={sensors.s} onChange={handleSensorChange} />
           </div>
         </section>
-        {/* Panel central: Estado del sistema */}
         <section className="panel panel-status">
           <div className={`status-circle ${status.color}`}>
             <span className="status-icon" />
@@ -109,19 +121,19 @@ function App() {
           <div className="status-label">{status.label}</div>
           <div className="status-msg">{status.msg}</div>
         </section>
-        {/* Panel derecho: Lógica y tabla */}
         <section className="panel panel-logic">
           <div className="logic-formula">
             <span>Lógica del Sistema</span>
             <div className="formula">&not;((&not;p &and; q &and; r) &or; &not;s)</div>
-            <button className="truth-table-btn" onClick={handleGenerateTable}>Generar Tabla de Verdad</button>
+            <button className="truth-table-btn" onClick={handleExportPDF}>
+              Exportar a PDF
+            </button>
           </div>
           <div className="truth-table-container">
             <TruthTable table={truthTable} />
           </div>
         </section>
       </div>
-      
     </div>
   );
 }
@@ -143,7 +155,6 @@ function SensorSwitch({ label, varName, highlight, checked, onChange }) {
   );
 }
 
-// Cambia el renderizado de la tabla para aplicar colores
 function TruthTable({ table }) {
   if (!table || table.length === 0) return null;
   return (
@@ -160,9 +171,9 @@ function TruthTable({ table }) {
                 style={{
                   background:
                     cell === 'V'
-                      ? '#4caf50' // verde
+                      ? '#4caf50'
                       : cell === 'F'
-                      ? '#bdbdbd' // gris
+                      ? '#bdbdbd'
                       : undefined,
                   color: cell === 'F' ? '#333' : '#fff',
                   fontWeight: 'bold',
